@@ -3,6 +3,7 @@
 This solution automates the process of evaluating vendor quotes for a specific project using Azure AI Foundry and SharePoint.
 
 **Use Case**  
+
 Vendors submit multiple PDF documents containing their quotes. These documents are uploaded to a designated SharePoint document library.
 
 **Workflow Overview**
@@ -22,5 +23,7 @@ Vendors submit multiple PDF documents containing their quotes. These documents a
     *   A recommendation is provided based on the best rating and lowest price.
 
 **Customization**  
-Both flows are fully adaptable to meet specific business requirements.
+
+Both flows are fully adaptable to meet specific business requirements. See the [ReadMe](./LogicApps/ReadMe.md) for details.
+
 

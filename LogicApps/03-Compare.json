@@ -1,0 +1,248 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "GETRequest": {
+                "type": "Request",
+                "kind": "Http"
+            }
+        },
+        "actions": {
+            "initvars": {
+                "runAfter": {},
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "prompt",
+                            "type": "string",
+                            "value": "Compare the following data from offers. Create a table with a comparison in Markdown with all fields in this order. Each offer starts with a heading. At the end, add the best offer by the best rating, where 1 is best, and the lowest price.\\n"
+                        },
+                        {
+                            "name": "body",
+                            "type": "string"
+                        },
+                        {
+                            "name": "answer",
+                            "type": "string"
+                        },
+                        {
+                            "name": "files",
+                            "type": "array",
+                            "value": []
+                        },
+                        {
+                            "name": "field",
+                            "type": "object"
+                        }
+                    ]
+                }
+            },
+            "getfilesincompare": {
+                "runAfter": {
+                    "initvars": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/tables/@{encodeURIComponent(encodeURIComponent('76b3e917-4193-4dfa-9381-f90cbd5c41a6'))}/getfileitems",
+                    "queries": {
+                        "folderPath": "/CompareDocuments/Compare"
+                    }
+                }
+            },
+            "foreachfile": {
+                "foreach": "@body('getfilesincompare')?['value']",
+                "actions": {
+                    "checkfilename": {
+                        "actions": {},
+                        "else": {
+                            "actions": {
+                                "setfield": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "field",
+                                        "value": "@json(items('foreachfile')?['Data'])"
+                                    }
+                                },
+                                "append": {
+                                    "runAfter": {
+                                        "setfield": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "AppendToArrayVariable",
+                                    "inputs": {
+                                        "name": "files",
+                                        "value": "# OFFER\\nFilename: @{variables('field')?['Filename']}\\nVendor: @{variables('field')?['Vendor']}\\nOfferNumber: @{variables('field')?['OfferNumber']}\\nOfferValidToDate:  @{variables('field')?['OfferValidToDate']}\\nProject: @{variables('field')?['Project']}\\nPriceTotal: @{variables('field')?['PriceTotal']}\\nDelivery: @{variables('field')?['Delivery']}\\nPaymentConditions: @{variables('field')?['PaymentConditions']}\\nWarranty: @{variables('field')?['Warranty']}\\nMaintenance: @{variables('field')?['Maintenance']}\\nContactPerson: @{variables('field')?['ContactPerson']}\\nRating: @{variables('field')?['Rating']}\\nRatingReason: @{variables('field')?['RatingReason']}\\nUID: @{variables('field')?['UID']}\\nPages: @{variables('field')?['Pages']}\\nRecipient: @{variables('field')?['Recipient']}\\n"
+                                    }
+                                }
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "contains": [
+                                        "@item()?['{FullPath}']",
+                                        "Compared-"
+                                    ]
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    }
+                },
+                "runAfter": {
+                    "getfilesincompare": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach",
+                "runtimeConfiguration": {
+                    "concurrency": {
+                        "repetitions": 1
+                    }
+                }
+            },
+            "checkfiles": {
+                "actions": {
+                    "setbody": {
+                        "type": "SetVariable",
+                        "inputs": {
+                            "name": "body",
+                            "value": "{\n    \"model\": \"gpt-5-nano\",\n    \"input\": [\n        {\n            \"role\": \"user\",\n            \"content\": [\n                {\n                    \"type\": \"input_text\",\n                    \"text\": \"@{variables('prompt')}\\n\\n@{join(variables('files'),', ')}\\n\"\n                }\n            ]\n        }\n    ]\n}"
+                        }
+                    },
+                    "HTTP": {
+                        "runAfter": {
+                            "setbody": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Http",
+                        "inputs": {
+                            "uri": "https://<YOUR-PROJECT>-resource.openai.azure.com/openai/responses?api-version=2025-03-01-preview",
+                            "method": "POST",
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "api-key": "<YOUR-KEY>"
+                            },
+                            "body": "@variables('body')"
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    },
+                    "Condition": {
+                        "actions": {
+                            "setanswer": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                    "name": "answer",
+                                    "value": "@string(body('HTTP')?['output'][1]?['content'][0]?['text'])"
+                                },
+                                "description": "json(string(body('HTTP')?['output'][0]?['content'][0]?['text']))"
+                            },
+                            "createfile": {
+                                "runAfter": {
+                                    "setanswer": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection",
+                                "inputs": {
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "body": "@variables('answer')",
+                                    "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/files",
+                                    "queries": {
+                                        "folderPath": "/CompareDocuments/Compare",
+                                        "name": "Compared-@{formatDateTime(utcNow(),'yyyy-MM-dd-HH-mm-ss')}.md",
+                                        "queryParametersSingleEncoded": true
+                                    }
+                                },
+                                "runtimeConfiguration": {
+                                    "contentTransfer": {
+                                        "transferMode": "Chunked"
+                                    }
+                                }
+                            }
+                        },
+                        "runAfter": {
+                            "HTTP": [
+                                "Succeeded"
+                            ]
+                        },
+                        "else": {
+                            "actions": {}
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "equals": [
+                                        "@actions('HTTP').outputs.statusCode",
+                                        200
+                                    ]
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    }
+                },
+                "runAfter": {
+                    "foreachfile": [
+                        "Succeeded"
+                    ]
+                },
+                "else": {
+                    "actions": {}
+                },
+                "expression": {
+                    "and": [
+                        {
+                            "greater": [
+                                "@length(variables('files'))",
+                                0
+                            ]
+                        }
+                    ]
+                },
+                "type": "If"
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "sharepointonline": {
+                    "id": "/subscriptions/<YOUR-SUBSCRIPTION>/providers/Microsoft.Web/locations/swedencentral/managedApis/sharepointonline",
+                    "connectionId": "/subscriptions/<YOUR-SUBSCRIPTION>/resourceGroups/rg-comparedocuments/providers/Microsoft.Web/connections/sharepointonline",
+                    "connectionName": "sharepointonline",
+                    "connectionProperties": {}
+                }
+            }
+        }
+    }
+}

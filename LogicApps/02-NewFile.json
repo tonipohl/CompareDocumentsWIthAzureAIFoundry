@@ -1,0 +1,238 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "newfilecreated": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/tables/@{encodeURIComponent(encodeURIComponent('76b3e917-4193-4dfa-9381-f90cbd5c41a6'))}/onnewfileitems"
+                },
+                "recurrence": {
+                    "interval": 1,
+                    "frequency": "Day",
+                    "timeZone": "W. Europe Standard Time",
+                    "startTime": "2025-12-01T08:00:00Z"
+                },
+                "splitOn": "@triggerBody()?['value']"
+            }
+        },
+        "actions": {
+            "HTTP": {
+                "type": "Http",
+                "description": "https://<YOUR-PROJECT>-resource.openai.azure.com/openai/responses?api-version=2025-03-01-preview",
+                "inputs": {
+                    "uri": "https://<YOUR-PROJECT>-resource.openai.azure.com/openai/responses?api-version=2025-03-01-preview",
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "api-key": "<YOUR-KEY>"
+                    },
+                    "body": "@variables('body')"
+                },
+                "runAfter": {
+                    "setbody": [
+                        "Succeeded"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                }
+            },
+            "setbody": {
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "body",
+                    "value": "{\n    \"model\": \"gpt-5-nano\",\n    \"input\": [\n        {\n            \"role\": \"user\",\n            \"content\": [\n                {\n                    \"type\": \"input_text\",\n                    \"text\": \"@{variables('prompt')}\"\n                },\n                {\n                \"type\": \"input_file\",\n                \"filename\": \"file1.pdf\",\n                \"file_data\": \"data:application/pdf;base64,@{outputs('Compose')}\"\n                },\n                {\n                \"type\": \"input_file\",\n                \"filename\": \"ourterms.pdf\",\n                \"file_data\": \"data:application/pdf;base64,@{outputs('Composeterms')}\"\n                }\n            ]\n        }\n    ]\n}"
+                },
+                "runAfter": {
+                    "Composeterms": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Compose": {
+                "type": "Compose",
+                "inputs": "@base64(body('getfilecontent'))",
+                "runAfter": {
+                    "getfilecontent": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "getterms": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/GetFileContentByPath",
+                    "queries": {
+                        "path": "/CompareDocuments/ourterms.pdf",
+                        "inferContentType": true,
+                        "queryParametersSingleEncoded": true
+                    }
+                },
+                "runAfter": {
+                    "Compose": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Composeterms": {
+                "type": "Compose",
+                "inputs": "@base64(body('getterms'))",
+                "runAfter": {
+                    "getterms": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "initvars": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "prompt",
+                            "type": "string",
+                            "value": "I work in the central purchasing department of my organization and am currently evaluating offers from various suppliers for a project. The offers are provided as PDF files. Please extract the relevant data according to the JSON schema defined below with the highest possible accuracy. Pay special attention to the following points: Currency values: Preserve both the numeric amount and the currency symbol or currency name.\\nNormalization of entities: Convert all data into the appropriate data types (e.g., text as string, quantities as numbers, dates in ISO-8601 format).\\nFlat structure: Unpack nested entities so that all elements appear at the same level in the output.\\nAlways present the contents in English. Units and quantities: Ensure that numeric values with units are correctly recognized and extracted.\\nLinked data: Maintain consistency and integrity across referenced fields. Compare each individual file with the General Terms and Conditions of Purchase of atwork (ourterms.pdf) and evaluate each offer based on how well it complies with the conditions in ourterms.pdf. Add a compliance rating under the key \\\"Rating\\\" with a value from 1 to 5, where:\\n1 = lowest compliance\\n5 = full compliance.\\nUse the value 5 only if the offer is 100% compliant with the conditions in ourterms.pdf. Provide a clear justification for the rating under the key \\\"RatingReason\\\"\\n.The final JSON output must accurately reflect all extracted entities, especially currency values, and conform to the expected data types. Ignore Markdown comments such as \\\\`\\\\`\\\\` and return only the pure JSON.\\n{ \\\\\\\"Filename\\\\\\\": \\\\\\\"[filename]\\\\\\\", \\\\\\\"Vendor\\\\\\\": \\\\\\\"[company]\\\\\\\",  \\\\\\\"OfferNumber\\\\\\\": \\\\\\\"[offernumber]\\\\\\\", \\\\\\\"OfferDate\\\\\\\": \\\\\\\"[offerdate]\\\\\\\", \\\\\\\"OfferValidToDate\\\\\\\": \\\\\\\"[offervalidto]\\\\\\\", \\\\\\\"Project\\\\\\\": \\\\\\\"[project]\\\\\\\", \\\\\\\"PriceTotal\\\\\\\": \\\\\\\"[totalpricenet]\\\\\\\", \\\\\\\"Delivery\\\\\\\": \\\\\\\"[conditions]\\\\\\\", \\\\\\\"PaymentConditions\\\\\\\": \\\\\\\"[conditions]\\\\\\\", \\\\\\\"Warranty\\\\\\\": \\\\\\\"[warranty]\\\\\\\", \\\\\\\"Maintenance\\\\\\\": \\\\\\\"[maintenance]\\\\\\\", \\\\\\\"ContactPerson\\\\\\\": \\\\\\\"[contactperson]\\\\\\\", \\\\\\\"Rating\\\\\\\": \\\\\\\"[rating]\\\\\\\", \\\\\\\"RatingReason\\\\\\\": \\\\\\\"[ratingreason]\\\\\\\", \\\\\\\"UID\\\\\\\": \\\\\\\"[UIDnumber]\\\\\\\", \\\\\\\"Pages\\\\\\\": \\\\\\\"[numberofpages]\\\\\\\", \\\\\\\"Recipient\\\\\\\": \\\\\\\"[recipient]\\\\\\\" }"
+                        },
+                        {
+                            "name": "body",
+                            "type": "string"
+                        },
+                        {
+                            "name": "answer",
+                            "type": "object"
+                        }
+                    ]
+                },
+                "runAfter": {}
+            },
+            "getfilecontent": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sharepointonline-2']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/files/@{encodeURIComponent(triggerBody()?['{Identifier}'])}/content",
+                    "queries": {
+                        "inferContentType": true
+                    }
+                },
+                "runAfter": {
+                    "initvars": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "checkok": {
+                "type": "If",
+                "expression": {
+                    "and": [
+                        {
+                            "equals": [
+                                "@actions('HTTP').outputs.statusCode",
+                                200
+                            ]
+                        }
+                    ]
+                },
+                "actions": {
+                    "setanswer": {
+                        "type": "SetVariable",
+                        "description": "json(string(body('HTTP')?['output'][0]?['content'][0]?['text']))",
+                        "inputs": {
+                            "name": "answer",
+                            "value": "@json(string(body('HTTP')?['output'][1]?['content'][0]?['text']))"
+                        }
+                    },
+                    "updatefile": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['sharepointonline-2']['connectionId']"
+                                }
+                            },
+                            "method": "patch",
+                            "body": {
+                                "Price": "@concat(variables('answer')?['Price'])",
+                                "Rating": "@concat(variables('answer')?['Rating'])",
+                                "RatingReason": "@concat(variables('answer')?['RatingReason'])",
+                                "Data": "@string(variables('answer'))",
+                                "Processed": true
+                            },
+                            "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/tables/@{encodeURIComponent(encodeURIComponent('76b3e917-4193-4dfa-9381-f90cbd5c41a6'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}/patchfileitem"
+                        },
+                        "runAfter": {
+                            "setanswer": [
+                                "Succeeded"
+                            ]
+                        }
+                    }
+                },
+                "else": {
+                    "actions": {
+                        "updateerror": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['sharepointonline-2']['connectionId']"
+                                    }
+                                },
+                                "method": "patch",
+                                "body": {
+                                    "Rating": "0",
+                                    "Data": "@string(variables('answer'))",
+                                    "Processed": true
+                                },
+                                "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://tpe5.sharepoint.com/sites/DemoAI'))}/tables/@{encodeURIComponent(encodeURIComponent('76b3e917-4193-4dfa-9381-f90cbd5c41a6'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}/patchfileitem"
+                            }
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HTTP": [
+                        "Succeeded"
+                    ]
+                }
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "sharepointonline": {
+                    "id": "/subscriptions/<YOUR-SUBSCRIPTION>/providers/Microsoft.Web/locations/swedencentral/managedApis/sharepointonline",
+                    "connectionId": "/subscriptions/<YOUR-SUBSCRIPTION>/resourceGroups/rg-comparedocuments/providers/Microsoft.Web/connections/sharepointonline",
+                    "connectionName": "sharepointonline",
+                    "connectionProperties": {}
+                }
+            }
+        }
+    }
+}
