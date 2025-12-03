@@ -46,7 +46,7 @@ I work in the central purchasing department of my organization and am currently 
 
 Use your endpoint similar as here:
 
-https://<YOUR-PROJECT>-resource.openai.azure.com/openai/v1/responses
+https://[YOUR-PROJECT]-resource.openai.azure.com/openai/v1/responses
 
 The authorization can be used with API key, or with a entitled app, such as a Managed Identity that has permissions to the foundry project in Azure.
 
